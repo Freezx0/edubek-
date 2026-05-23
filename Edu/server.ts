@@ -1,11 +1,43 @@
-import express from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
-import net from "net";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
-import { Course, QuizQuestion, Lesson, FeedbackLog, PlatformVideo, PromoEvent, SiteContent } from "./src/types.js";
+import { Course, QuizQuestion, Lesson, FeedbackLog, PlatformVideo, PromoEvent, SiteContent, StudentStats } from "./src/types.js";
+
+const DATA_DIR = path.join(process.cwd(), "data");
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN?.trim() || "";
+
+function loadJson<T>(filename: string, fallback: T): T {
+  const filePath = path.join(DATA_DIR, filename);
+  try {
+    if (fs.existsSync(filePath)) {
+      return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
+    }
+  } catch (e) {
+    console.warn(`[data] Could not load ${filename}:`, e);
+  }
+  return fallback;
+}
+
+function saveJson(filename: string, data: unknown): void {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(path.join(DATA_DIR, filename), JSON.stringify(data, null, 2), "utf-8");
+  } catch (e) {
+    console.error(`[data] Could not save ${filename}:`, e);
+  }
+}
+
+function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const token = String(req.headers["x-admin-token"] || req.query.adminToken || "").trim();
+  const expected = ADMIN_TOKEN || "campus-admin-dev";
+  if (!token || token !== expected) {
+    return res.status(401).json({ error: "Admin token required (header X-Admin-Token)." });
+  }
+  next();
+}
 
 if (fs.existsSync(".env.local")) {
   dotenv.config({ path: ".env.local" });
@@ -14,7 +46,7 @@ if (fs.existsSync(".env.local")) {
 }
 
 const app = express();
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "8mb" }));
 
 const PORT = 3000;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
@@ -292,6 +324,44 @@ function saveSiteContentToDisk() {
 
 let siteContent: SiteContent = loadSiteContent();
 
+function saveCourses() {
+  saveJson("courses.json", courses);
+}
+function saveFeedbacks() {
+  saveJson("feedbacks.json", userFeedbacks);
+}
+function saveStatsDb() {
+  saveJson("stats.json", statsDatabase);
+}
+
+type StudentStatsMap = Record<string, StudentStats>;
+let studentStatsMap: StudentStatsMap = loadJson<StudentStatsMap>("student-stats.json", {});
+
+function persistLoadedData() {
+  const loadedCourses = loadJson<Course[]>("courses.json", []);
+  if (loadedCourses.length > 0) {
+    courses = loadedCourses;
+  } else {
+    saveCourses();
+  }
+
+  const loadedFeedbacks = loadJson<FeedbackLog[]>("feedbacks.json", []);
+  if (loadedFeedbacks.length > 0) {
+    userFeedbacks = loadedFeedbacks;
+  } else {
+    saveFeedbacks();
+  }
+
+  const loadedStats = loadJson<typeof statsDatabase | null>("stats.json", null);
+  if (loadedStats && typeof loadedStats.aiGenerationsCount === "number") {
+    statsDatabase = loadedStats;
+  } else {
+    saveStatsDb();
+  }
+}
+
+persistLoadedData();
+
 function extractYoutubeId(input: string): string | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
@@ -363,6 +433,10 @@ async function generateWithGemini(params: Parameters<GoogleGenAI["models"]["gene
 
 // ---------------- API ENDPOINTS ----------------
 
+app.get("/api/admin/verify", requireAdmin, (_req, res) => {
+  res.json({ ok: true });
+});
+
 // Get custom metadata/stats
 app.get("/api/stats", (req, res) => {
   const avgPct = statsDatabase.quizzesTakenCount > 0 
@@ -384,7 +458,7 @@ app.get("/api/courses", (req, res) => {
 });
 
 // Submit a manually created course
-app.post("/api/courses", (req, res) => {
+app.post("/api/courses", requireAdmin, (req, res) => {
   try {
     const { title, description, category, difficulty, lessons, quizzes } = req.body;
     if (!title || !description || !category || !lessons || !quizzes) {
@@ -417,6 +491,7 @@ app.post("/api/courses", (req, res) => {
     };
 
     courses.unshift(newCourse);
+    saveCourses();
     res.status(201).json(newCourse);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -424,11 +499,12 @@ app.post("/api/courses", (req, res) => {
 });
 
 // Delete a course
-app.delete("/api/courses/:id", (req, res) => {
+app.delete("/api/courses/:id", requireAdmin, (req, res) => {
   const { id } = req.params;
   const initialLength = courses.length;
   courses = courses.filter(c => c.id !== id);
   if (courses.length < initialLength) {
+    saveCourses();
     res.json({ message: "Course deleted successfully", success: true });
   } else {
     res.status(404).json({ error: "Course not found", success: false });
@@ -454,6 +530,7 @@ app.post("/api/feedback", (req, res) => {
     };
 
     userFeedbacks.unshift(feedback);
+    saveFeedbacks();
     res.status(201).json(feedback);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -472,6 +549,7 @@ app.post("/api/quizzes/submit", (req, res) => {
     const pct = Math.round((score / maxScore) * 100);
     statsDatabase.quizzesTakenCount += 1;
     statsDatabase.totalScoreSumPct += pct;
+    saveStatsDb();
     res.json({ success: true, loggedPercentage: pct });
   } else {
     res.status(400).json({ error: "Invalid scoring stats" });
@@ -602,6 +680,8 @@ app.post("/api/courses/generate", async (req, res) => {
 
     courses.unshift(generatedCourse);
     statsDatabase.aiGenerationsCount += 1;
+    saveCourses();
+    saveStatsDb();
 
     res.status(201).json(generatedCourse);
   } catch (error: any) {
@@ -658,7 +738,7 @@ app.get("/api/site/content", (_req, res) => {
   res.json(siteContent);
 });
 
-app.post("/api/site/videos", (req, res) => {
+app.post("/api/site/videos", requireAdmin, (req, res) => {
   try {
     const { title, description, url, videoUrl, duration, instructor, category, thumbnailText, fileData } = req.body;
     const link = String(url || videoUrl || "").trim();
@@ -705,7 +785,7 @@ app.post("/api/site/videos", (req, res) => {
   }
 });
 
-app.delete("/api/site/videos/:id", (req, res) => {
+app.delete("/api/site/videos/:id", requireAdmin, (req, res) => {
   const before = siteContent.videos.length;
   siteContent.videos = siteContent.videos.filter((v) => v.id !== req.params.id);
   if (siteContent.videos.length < before) {
@@ -716,7 +796,7 @@ app.delete("/api/site/videos/:id", (req, res) => {
   }
 });
 
-app.put("/api/site/events", (req, res) => {
+app.put("/api/site/events", requireAdmin, (req, res) => {
   try {
     const { events } = req.body;
     if (!Array.isArray(events)) {
@@ -734,7 +814,7 @@ app.put("/api/site/events", (req, res) => {
   }
 });
 
-app.patch("/api/site/events/:id", (req, res) => {
+app.patch("/api/site/events/:id", requireAdmin, (req, res) => {
   const event = siteContent.events.find((e) => e.id === req.params.id);
   if (!event) return res.status(404).json({ error: "Событие не найдено" });
   if (req.body.imageUrl !== undefined) event.imageUrl = req.body.imageUrl;
@@ -743,66 +823,31 @@ app.patch("/api/site/events/:id", (req, res) => {
   res.json(event);
 });
 
-// TCP Connection check for MTProto or custom servers
-app.post("/api/proxy/check", (req, res) => {
-  const { server, port, secret } = req.body;
-  
-  if (!server || !port) {
-    return res.status(400).json({ error: "Не указаны хост или порт для проверки!" });
-  }
-
-  const hostname = String(server).trim();
-  const portNum = Number(port);
-
-  if (isNaN(portNum) || portNum <= 0 || portNum > 65535) {
-    return res.status(400).json({ error: "Недопустимый порт!" });
-  }
-
-  console.log(`[Proxy Monitor] Testing socket connection to ${hostname}:${portNum}...`);
-
-  const socket = new net.Socket();
-  let completed = false;
-
-  // Set timeout of 4 seconds
-  socket.setTimeout(4000);
-
-  socket.connect(portNum, hostname, () => {
-    completed = true;
-    socket.destroy();
-    res.json({
-      success: true,
-      status: "Подключено",
-      message: `Успешное TCP рукопожатие с прокси-сервером ${hostname}:${portNum}! Настройки MTProto верны.`
-    });
-  });
-
-  socket.on("error", (err) => {
-    if (!completed) {
-      completed = true;
-      socket.destroy();
-      console.warn(`[Proxy Monitor] Connection error to ${hostname}:${portNum}:`, err.message);
-      res.json({
-        success: false,
-        status: "Ошибка",
-        message: `Не удалось установить соединение: ${err.message}`
-      });
-    }
-  });
-
-  socket.on("timeout", () => {
-    if (!completed) {
-      completed = true;
-      socket.destroy();
-      console.warn(`[Proxy Monitor] Connection timeout reaching ${hostname}:${portNum}`);
-      res.json({
-        success: false,
-        status: "Таймаут",
-        message: `Сервер не ответил в течение 4 секунд. Проверьте фаервол или статус прокси.`
-      });
-    }
-  });
+// Student progress (sync across browsers / incognito-friendly with stable id)
+app.get("/api/student/stats", (req, res) => {
+  const studentId = String(req.query.studentId || "default");
+  const stats = studentStatsMap[studentId] || {
+    completedLessons: [],
+    gradedQuizzes: {},
+    aiChatMessagesCount: 0,
+  };
+  res.json(stats);
 });
 
+app.put("/api/student/stats", (req, res) => {
+  try {
+    const studentId = String(req.body.studentId || "default");
+    const stats = req.body.stats as StudentStats | undefined;
+    if (!stats || !Array.isArray(stats.completedLessons)) {
+      return res.status(400).json({ error: "Invalid stats payload" });
+    }
+    studentStatsMap[studentId] = stats;
+    saveJson("student-stats.json", studentStatsMap);
+    res.json(stats);
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Save failed" });
+  }
+});
 
 // Search YouTube videos with AI recommendation
 app.post("/api/youtube/search", async (req, res) => {
@@ -992,6 +1037,8 @@ app.post("/api/courses/generate-duolingo", async (req, res) => {
 
     courses.unshift(generatedCourse);
     statsDatabase.aiGenerationsCount += 1;
+    saveCourses();
+    saveStatsDb();
 
     res.status(201).json(generatedCourse);
   } catch (error: any) {

@@ -4,6 +4,7 @@ import { RefreshCw, ArrowLeft } from "lucide-react";
 import StudentPortal from "./components/StudentPortal";
 import AdminPortal from "./components/AdminPortal";
 import { Course, FeedbackLog, StudentStats, AdminStats, SiteContent, AdminTabId } from "./types";
+import { CoursesListSkeleton } from "./components/LoadingSkeleton";
 
 const emptySiteContent: SiteContent = { videos: [], events: [] };
 
@@ -24,25 +25,57 @@ export default function App() {
   const [loadingCourses, setLoadingCourses] = useState<boolean>(true);
   const [loadingStats, setLoadingStats] = useState<boolean>(true);
 
-  const [studentStats, setStudentStats] = useState<StudentStats>(() => {
-    const saved = localStorage.getItem("eduhub_student_stats");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (err) {
-        console.error(err);
-      }
+  const STUDENT_ID_KEY = "isa_student_id";
+  const [studentId] = useState(() => {
+    let id = localStorage.getItem(STUDENT_ID_KEY);
+    if (!id) {
+      id = "stu-" + Math.random().toString(36).slice(2, 11);
+      localStorage.setItem(STUDENT_ID_KEY, id);
     }
-    return {
-      completedLessons: [],
-      gradedQuizzes: {},
-      aiChatMessagesCount: 0,
-    };
+    return id;
   });
 
+  const defaultStats: StudentStats = {
+    completedLessons: [],
+    gradedQuizzes: {},
+    aiChatMessagesCount: 0,
+  };
+
+  const [studentStats, setStudentStats] = useState<StudentStats>(defaultStats);
+  const [statsHydrated, setStatsHydrated] = useState(false);
+
   useEffect(() => {
+    (async () => {
+      try {
+        const resp = await fetch(`/api/student/stats?studentId=${encodeURIComponent(studentId)}`);
+        if (resp.ok) {
+          setStudentStats(await resp.json());
+        }
+      } catch (e) {
+        console.warn("Using local student stats fallback", e);
+        const saved = localStorage.getItem("eduhub_student_stats");
+        if (saved) {
+          try {
+            setStudentStats(JSON.parse(saved));
+          } catch {
+            /* ignore */
+          }
+        }
+      } finally {
+        setStatsHydrated(true);
+      }
+    })();
+  }, [studentId]);
+
+  useEffect(() => {
+    if (!statsHydrated) return;
     localStorage.setItem("eduhub_student_stats", JSON.stringify(studentStats));
-  }, [studentStats]);
+    fetch("/api/student/stats", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ studentId, stats: studentStats }),
+    }).catch(() => {});
+  }, [studentStats, studentId, statsHydrated]);
 
   const fetchSiteContent = useCallback(async () => {
     try {
@@ -138,12 +171,9 @@ export default function App() {
         </header>
       )}
 
-      <main className="flex-grow w-full max-w-lg mx-auto px-3 sm:px-4 py-2 sm:py-3 isa-app-main">
+      <main className="flex-grow w-full max-w-lg lg:max-w-2xl mx-auto px-3 sm:px-4 py-2 sm:py-3 isa-app-main">
         {loadingCourses && courses.length === 0 ? (
-          <div className="min-h-[400px] flex flex-col justify-center items-center space-y-4">
-            <div className="w-12 h-12 border-4 border-isa-cream-dark border-t-isa-gold rounded-full animate-spin" />
-            <p className="text-sm text-isa-muted font-medium">Loading campus data…</p>
-          </div>
+          <CoursesListSkeleton />
         ) : (
           <AnimatePresence mode="wait">
             {activeView === "student" ? (

@@ -20,3 +20,15 @@ View your app in AI Studio: https://ai.studio/apps/39b9fd7a-6293-4503-b896-69c92
    `npm run dev`
 
 The app runs at http://localhost:3000
+
+## Admin API
+
+Protected routes require header `X-Admin-Token`. Default for local demo: `campus-admin-dev` (override with `ADMIN_TOKEN` in `.env`).
+
+## Data persistence
+
+Courses, feedback, stats, and student progress are stored under `data/*.json` and survive server restarts.
+
+## Liveness demo
+
+The blink scanner is a **liveness detection demo** (pixel heuristics), not real Face ID or face matching.

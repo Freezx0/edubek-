@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { fetchAdmin } from "../lib/adminApi";
 import { Video, Upload, Link2, Trash2, Image as ImageIcon, Globe, CheckCircle } from "lucide-react";
 import { PlatformVideo, PromoEvent, SiteContent } from "../types";
 
@@ -150,7 +151,7 @@ export default function AdminMediaPanel({
 
     setUploadingVideo(true);
     try {
-      const resp = await fetch("/api/site/videos", {
+      const resp = await fetchAdmin("/api/site/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -192,7 +193,7 @@ export default function AdminMediaPanel({
   const handleDeleteVideo = async (id: string) => {
     if (!confirm(lang === "ru" ? "Удалить видео?" : "Delete video?")) return;
     try {
-      const resp = await fetch(`/api/site/videos/${id}`, { method: "DELETE" });
+      const resp = await fetchAdmin(`/api/site/videos/${id}`, { method: "DELETE" });
       if (!resp.ok) throw new Error(t.serverError);
       onRefreshSiteContent();
     } catch (err: unknown) {
@@ -215,7 +216,7 @@ export default function AdminMediaPanel({
   const handleSaveEvents = async () => {
     setSavingEvents(true);
     try {
-      const resp = await fetch("/api/site/events", {
+      const resp = await fetchAdmin("/api/site/events", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ events: localEvents }),

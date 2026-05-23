@@ -89,9 +89,9 @@ export const FACE_PHASE_LABELS: Record<FaceScanPhase, string> = {
   eyes_open_1: "👁️ Keep your eyes open",
   eyes_closed: "😌 Close your eyes briefly",
   eyes_open_2: "👁️ Open your eyes again",
-  capturing: "Saving biometrics…",
-  success: "Verified!",
-  error: "Scan failed — try again",
+  capturing: "Saving liveness profile…",
+  success: "Liveness check passed!",
+  error: "Liveness check failed — try again",
 };
 
 export const FACE_PHASE_STEPS: FaceScanPhase[] = [

@@ -56,6 +56,7 @@ import {
   FACE_PHASE_LABELS,
   FACE_PHASE_STEPS,
 } from "../utils/faceBlink";
+import BottomNav from "../student/components/BottomNav";
 
 interface StudentPortalProps {
   courses: Course[];
@@ -440,7 +441,7 @@ export default function StudentPortal({
 
   const startFaceScan = (mode: "register" | "authenticate") => {
     if (mode === "authenticate" && !storedFaceIdTemplate) {
-      alert("Register Face ID in Profile first (eyes open → closed → open).");
+      alert("Сначала сохраните профиль живости в настройках (открыть → закрыть → открыть глаза).");
       return;
     }
 
@@ -564,7 +565,7 @@ export default function StudentPortal({
       
       setProfileFaceId(true);
       setFaceScannerStatus("success");
-      setFacePhase("success", "Face ID сохранён! Проверка «глаза открыты → закрыты → открыты» пройдена.");
+      setFacePhase("success", "Профиль живости сохранён (демо). Моргание пройдено.");
       setTimeout(() => closeFaceScanner(), 2200);
     } else {
       setFaceScannerStatus("success");
@@ -576,7 +577,7 @@ export default function StudentPortal({
         }));
         closeFaceScanner();
         alert(
-          `Face ID sign-in successful — welcome, ${profileFirstName || "Student"} ${profileLastName || ""}!`
+          `Вход по демо-живости подтверждён — добро пожаловать, ${profileFirstName || "Student"}!`
         );
       }, 1500);
     }
@@ -3335,14 +3336,6 @@ export default function StudentPortal({
 
   // ================= MAIN RENDER =================
 
-  const navTabs = [
-    { id: "home" as const, label: "Home", icon: Home },
-    { id: "lessons" as const, label: "Lessons", icon: BookOpen },
-    { id: "search" as const, label: "Play", icon: Sparkles },
-    { id: "video" as const, label: "Video", icon: Video },
-    { id: "profile" as const, label: "Profile", icon: User },
-  ];
-
   return (
     <div className="min-h-[min(520px,100dvh)]">
       {renderCampusProfileHeader()}
@@ -3350,41 +3343,13 @@ export default function StudentPortal({
       {renderLeaderboardModal()}
       <div className="min-h-[480px]">{tabBodyContent()}</div>
 
-      {/* Bottom nav — compact on mobile, safe-area aware */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
-        <div className="max-w-lg mx-auto isa-bottom-nav-wrap pointer-events-auto">
-          <nav
-            className="isa-bottom-nav bg-white rounded-[22px] sm:rounded-[28px] border border-isa-border py-1.5 sm:py-2 px-1 sm:px-2 flex justify-between items-stretch isa-shadow"
-            aria-label="Main navigation"
-          >
-            {navTabs.map((tab) => {
-              const active = currentTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setCurrentTab(tab.id);
-                    if (tab.id !== "lessons") setActiveCourse(null);
-                  }}
-                  className={`isa-bottom-nav__btn flex flex-col items-center justify-center gap-0.5 rounded-xl sm:rounded-2xl transition cursor-pointer ${
-                    active ? "isa-nav-item--active text-isa-navy font-bold" : "text-isa-muted"
-                  }`}
-                >
-                  <tab.icon className={`w-5 h-5 shrink-0 ${active ? "stroke-[2.5px]" : ""}`} />
-                  <span
-                    className={`text-[9px] sm:text-[10px] font-semibold leading-none truncate max-w-full px-0.5 ${
-                      active ? "font-bold" : ""
-                    }`}
-                  >
-                    {tab.label}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-      </div>
+      <BottomNav
+        currentTab={currentTab}
+        onTabChange={(tab) => {
+          setCurrentTab(tab);
+          if (tab !== "lessons") setActiveCourse(null);
+        }}
+      />
 
       {/* Dynamic SSO overlay modal panel */}
       <AnimatePresence>
@@ -3425,7 +3390,7 @@ export default function StudentPortal({
                 className="w-full flex items-center justify-center gap-1.5 p-3 rounded-2xl bg-indigo-600 hover:bg-[#4338ca] text-white font-extrabold text-[10px] uppercase tracking-wider transition cursor-pointer shadow-xs"
               >
                 <Fingerprint className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
-                <span>Войти по Face ID (Скан лица)</span>
+                <span>Войти по демо живости (моргание)</span>
               </button>
 
               <div className="relative flex py-1 items-center select-none">
@@ -3478,7 +3443,7 @@ export default function StudentPortal({
         )}
       </AnimatePresence>
 
-      {/* Face ID — liveness: eyes open → closed → open */}
+      {/* Liveness demo — blink detection, not biometric Face ID */}
       <AnimatePresence>
         {faceScannerOpen && (
           <motion.div
@@ -3498,10 +3463,10 @@ export default function StudentPortal({
                   <Fingerprint className="w-6 h-6 text-isa-navy" />
                 </div>
                 <h3 className="text-base font-bold text-isa-navy font-[family-name:var(--font-display)]">
-                  {faceScannerMode === "register" ? "Campus Face ID registration" : "Face ID sign-in"}
+                  {faceScannerMode === "register" ? "Liveness profile (demo)" : "Liveness sign-in (demo)"}
                 </h3>
                 <p className="text-[11px] text-isa-muted">
-                  Liveness check: eyes open → closed → open again
+                  Pixel-based blink demo — not real Face ID or face matching
                 </p>
               </div>
 
