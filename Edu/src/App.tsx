@@ -107,11 +107,11 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col text-isa-text">
+    <div className="min-h-[100dvh] flex flex-col text-isa-text overflow-x-hidden">
       {activeView === "admin" && (
         <header className="isa-school-header sticky top-0 z-50">
           <div className="isa-school-header__gold-rule" />
-          <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="max-w-lg mx-auto px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 sm:gap-3">
             <div className="min-w-0">
               <p className="isa-school-title truncate">International School</p>
               <p className="isa-school-subtitle truncate">Administration</p>
@@ -138,7 +138,7 @@ export default function App() {
         </header>
       )}
 
-      <main className="flex-grow w-full max-w-lg mx-auto px-4 py-3 pb-8">
+      <main className="flex-grow w-full max-w-lg mx-auto px-3 sm:px-4 py-2 sm:py-3 isa-app-main">
         {loadingCourses && courses.length === 0 ? (
           <div className="min-h-[400px] flex flex-col justify-center items-center space-y-4">
             <div className="w-12 h-12 border-4 border-isa-cream-dark border-t-isa-gold rounded-full animate-spin" />

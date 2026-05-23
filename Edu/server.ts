@@ -17,6 +17,7 @@ const app = express();
 app.use(express.json({ limit: "50mb" }));
 
 const PORT = 3000;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 // Shared in-memory databases
 let courses: Course[] = [
@@ -328,12 +329,14 @@ function extractYoutubeId(input: string): string | null {
 let aiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI {
   if (!aiClient) {
-    const key = process.env.GEMINI_API_KEY;
+    const key = process.env.GEMINI_API_KEY?.trim();
     if (!key) {
-      console.warn("WARNING: GEMINI_API_KEY is not defined! AI features might fail.");
+      throw new Error(
+        "GEMINI_API_KEY не задан. Создайте файл .env в папке Edu и добавьте: GEMINI_API_KEY=ваш_ключ"
+      );
     }
     aiClient = new GoogleGenAI({
-      apiKey: key || "MOCK_KEY_IF_NOT_SET",
+      apiKey: key,
       httpOptions: {
         headers: {
           'User-Agent': 'aistudio-build',
@@ -342,6 +345,20 @@ function getGeminiClient(): GoogleGenAI {
     });
   }
   return aiClient;
+}
+
+async function generateWithGemini(params: Parameters<GoogleGenAI["models"]["generateContent"]>[0]) {
+  const ai = getGeminiClient();
+  try {
+    return await ai.models.generateContent({ ...params, model: params.model || GEMINI_MODEL });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (params.model && params.model !== GEMINI_MODEL && /not found|invalid model|404/i.test(msg)) {
+      console.warn(`Model ${params.model} unavailable, retrying with ${GEMINI_MODEL}`);
+      return await ai.models.generateContent({ ...params, model: GEMINI_MODEL });
+    }
+    throw err;
+  }
 }
 
 // ---------------- API ENDPOINTS ----------------
@@ -469,7 +486,6 @@ app.post("/api/courses/generate", async (req, res) => {
       return res.status(400).json({ error: "Тема курса (topic) обязательна!" });
     }
 
-    const ai = getGeminiClient();
     const targetDiff = difficulty || "Beginner";
     const targetLang = language || "Russian";
 
@@ -540,8 +556,8 @@ app.post("/api/courses/generate", async (req, res) => {
       required: ["title", "description", "category", "difficulty", "lessons", "quizzes"]
     };
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await generateWithGemini({
+      model: GEMINI_MODEL,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -602,8 +618,6 @@ app.post("/api/ai/chat", async (req, res) => {
       return res.status(400).json({ error: "Messages array is required." });
     }
 
-    const ai = getGeminiClient();
-
     // Map history to parts standard
     // Use the latest 8 messages to keep inside token context
     const recentMessages = messages.slice(-8);
@@ -621,8 +635,8 @@ ${currentTopic ? `Прямо сейчас студент находится вн
 
     const userPrompt = `История диалога:\n${historyPrompt}\n\nСтудент задает следующий новый вопрос: "${recentMessages[recentMessages.length - 1]?.content || ""}"\nТвой ответ (от лица Капусты-Репетитора):`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await generateWithGemini({
+      model: GEMINI_MODEL,
       contents: userPrompt,
       config: {
         systemInstruction,
@@ -798,7 +812,6 @@ app.post("/api/youtube/search", async (req, res) => {
       return res.status(400).json({ error: "Search query is required!" });
     }
 
-    const ai = getGeminiClient();
     const systemInstruction = `You are an academic expert matching relevant Youtube video recommendations for educational subjects. Return a list of 4 highly relevant Youtube videos.`;
     const prompt = `Generate a JSON object containing exactly 4 relevant educational YouTube videos for the topic: "${query}".
 For each video, provide:
@@ -838,8 +851,8 @@ Ensure your response follows the JSON schema exactly.`;
       required: ["videos"]
     };
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await generateWithGemini({
+      model: GEMINI_MODEL,
       contents: prompt,
       config: {
         systemInstruction,
@@ -867,7 +880,6 @@ app.post("/api/courses/generate-duolingo", async (req, res) => {
       return res.status(400).json({ error: "Тема (topic) обязательна!" });
     }
 
-    const ai = getGeminiClient();
     const targetLang = language || "Russian";
     
     const prompt = `Создай один интерактивный игровой Duolingo-style курс на тему: "${resolvedTopic}".
@@ -940,8 +952,8 @@ app.post("/api/courses/generate-duolingo", async (req, res) => {
       required: ["title", "description", "category", "difficulty", "lessons", "quizzes"]
     };
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await generateWithGemini({
+      model: GEMINI_MODEL,
       contents: prompt,
       config: {
         responseMimeType: "application/json",

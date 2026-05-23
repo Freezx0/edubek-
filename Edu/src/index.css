@@ -1,5 +1,5 @@
-@import "tailwindcss";
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
 
 /* International School Academy — design system */
 @theme {
@@ -25,6 +25,10 @@
   --isa-cream: #f8f6f1;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   background-color: var(--isa-cream);
   background-image:
@@ -33,6 +37,102 @@ body {
   color: var(--isa-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Mobile shell */
+.isa-app-main {
+  padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+.isa-bottom-nav-wrap {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+  padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+}
+
+.isa-bottom-nav {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.isa-bottom-nav__btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0.35rem 0.2rem;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.isa-touch-btn {
+  min-height: 2.75rem;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.isa-header-icon {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.isa-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.isa-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+.isa-scroll-x > * {
+  scroll-snap-align: start;
+}
+
+.isa-chat-sheet {
+  width: min(100vw - 1rem, 24rem);
+  max-height: min(72dvh, 32rem);
+}
+
+@media (max-width: 639px) {
+  .isa-chat-sheet--open {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    height: 100dvh;
+    border-radius: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .isa-short-cell {
+    width: 7.5rem;
+    height: 13.25rem;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px; /* prevents iOS zoom on focus */
+  }
+}
+
+@media (min-width: 640px) {
+  .isa-chat-sheet--open {
+    border-radius: 1rem;
+  }
 }
 
 /* School shell */

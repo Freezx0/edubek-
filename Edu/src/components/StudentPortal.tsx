@@ -229,6 +229,11 @@ export default function StudentPortal({
   const [videoSearchQuery, setVideoSearchQuery] = useState<string>("");
   const [isVideoSearching, setIsVideoSearching] = useState<boolean>(false);
 
+  // AI course generation
+  const [aiCourseTopic, setAiCourseTopic] = useState<string>("");
+  const [isGeneratingCourse, setIsGeneratingCourse] = useState<boolean>(false);
+  const [aiCourseError, setAiCourseError] = useState<string | null>(null);
+
   // Duolingo game states
   const [isGeneratingDuo, setIsGeneratingDuo] = useState<boolean>(false);
   const [activeDuolingoLesson, setActiveDuolingoLesson] = useState<any | null>(null);
@@ -724,8 +729,8 @@ export default function StudentPortal({
       setCurrentQuizIdx(prev => prev + 1);
     } else {
       setQuizCompleted(true);
-      
-      const finalVal = quizScore + (selectedAnswer === activeCourse.quizzes[currentQuizIdx].correctAnswer ? 1 : 0);
+      // quizScore already includes the last answer (incremented in handleSubmitAnswer)
+      const finalVal = quizScore;
       fetch("/api/quizzes/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -766,7 +771,12 @@ export default function StudentPortal({
         })
       });
 
-      if (!resp.ok) throw new Error("Не удалось связаться с ИИ репетитором.");
+      if (!resp.ok) {
+        const errBody = await resp.json().catch(() => ({}));
+        throw new Error(
+          typeof errBody.error === "string" ? errBody.error : "Не удалось связаться с ИИ репетитором."
+        );
+      }
       const data = await resp.json();
       setChatMessages(prev => [
         ...prev,
@@ -866,13 +876,46 @@ export default function StudentPortal({
         const data = await resp.json();
         setAiSearchRecommendation(data.content);
       } else {
-        setAiSearchRecommendation("Поиск по ключевым словам выполнен успешно! (см. список ниже). Ответ от ИИ Куратора временно задержан.");
+        const err = await resp.json().catch(() => ({}));
+        setAiSearchRecommendation(
+          typeof err.error === "string"
+            ? `⚠️ ${err.error}`
+            : "Поиск выполнен (см. курсы ниже). ИИ-рекомендация временно недоступна."
+        );
       }
     } catch (err) {
       console.error(err);
-      setAiSearchRecommendation("Поиск по ключевым словам выполнен успешно! Рекомендации от ИИ временно недоступны.");
+      setAiSearchRecommendation("⚠️ Не удалось связаться с сервером. Запустите npm run dev и проверьте GEMINI_API_KEY.");
     } finally {
       setIsAiSearching(false);
+    }
+  };
+
+  const handleGenerateAiCourse = async () => {
+    const topic = aiCourseTopic.trim();
+    if (!topic) {
+      setAiCourseError("Введите тему курса");
+      return;
+    }
+    setIsGeneratingCourse(true);
+    setAiCourseError(null);
+    try {
+      const resp = await fetch("/api/courses/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic, difficulty: "Beginner", language: "Russian" }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(data.error || "Не удалось сгенерировать курс");
+      }
+      setAiCourseTopic("");
+      onRefreshCourses();
+      handleStartCourse(data as Course);
+    } catch (err: unknown) {
+      setAiCourseError(err instanceof Error ? err.message : "Ошибка генерации курса");
+    } finally {
+      setIsGeneratingCourse(false);
     }
   };
 
@@ -1161,20 +1204,22 @@ export default function StudentPortal({
               <p className="text-[10px] text-white/70 truncate">{userProfile.tier}</p>
             </div>
           </button>
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0">
             <button
               type="button"
               onClick={() => setChatOpen(true)}
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-isa-gold-light cursor-pointer transition"
+              className="isa-header-icon rounded-lg bg-white/10 hover:bg-white/20 text-isa-gold-light cursor-pointer transition"
               title="Academic chat"
+              aria-label="Chat"
             >
               <MessageSquare className="w-4 h-4" />
             </button>
             <button
               type="button"
               onClick={() => setShowRatingLeaderboard(true)}
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-isa-gold cursor-pointer transition"
+              className="isa-header-icon rounded-lg bg-white/10 hover:bg-white/20 text-isa-gold cursor-pointer transition"
               title="House cup"
+              aria-label="Leaderboard"
             >
               <Trophy className="w-4 h-4" />
             </button>
@@ -1182,8 +1227,9 @@ export default function StudentPortal({
               <button
                 type="button"
                 onClick={onRefresh}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white/90 cursor-pointer transition"
+                className="isa-header-icon rounded-lg bg-white/10 hover:bg-white/20 text-white/90 cursor-pointer transition"
                 title="Refresh"
+                aria-label="Refresh"
               >
                 <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
               </button>
@@ -1192,8 +1238,9 @@ export default function StudentPortal({
               <button
                 type="button"
                 onClick={onOpenAdmin}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 border border-isa-gold/40 text-isa-gold cursor-pointer transition"
+                className="isa-header-icon rounded-lg bg-white/10 hover:bg-white/20 border border-isa-gold/40 text-isa-gold cursor-pointer transition"
                 title="Admin"
+                aria-label="Admin"
               >
                 <Zap className="w-3.5 h-3.5 fill-isa-gold" />
               </button>
@@ -1214,7 +1261,7 @@ export default function StudentPortal({
                 <p className="text-lg font-black text-white leading-none">{userCoins}</p>
               </div>
             </div>
-            <span className="text-[9px] text-isa-gold-light font-bold uppercase">Virtual currency</span>
+            <span className="text-[9px] text-isa-gold-light font-bold uppercase hidden sm:inline">Virtual currency</span>
           </button>
           <button
             type="button"
@@ -1437,11 +1484,11 @@ export default function StudentPortal({
       <div className="space-y-4 animate-fade-in select-none">
 
         {/* YouTube Shorts — one row, no labels or buttons */}
-        <div className="isa-shorts-row flex gap-2.5 overflow-x-auto pb-1 -mx-0.5 px-0.5">
+        <div className="isa-shorts-row isa-scroll-x flex gap-2.5 pb-1 -mx-0.5 px-0.5">
           {homeShortIds.map((id) => (
             <div
               key={id}
-              className="isa-short-cell shrink-0 w-[108px] h-[192px] rounded-2xl overflow-hidden bg-isa-navy shadow-md border border-isa-border/60"
+              className="isa-short-cell shrink-0 w-[108px] h-[192px] sm:w-[108px] sm:h-[192px] rounded-2xl overflow-hidden bg-isa-navy shadow-md border border-isa-border/60"
             >
               <iframe
                 src={`https://www.youtube.com/embed/${id}?playsinline=1&controls=0&modestbranding=1&rel=0&iv_load_policy=3&disablekb=1&fs=0&loop=1&playlist=${id}`}
@@ -1511,11 +1558,11 @@ export default function StudentPortal({
 
 
         {/* 3 карты: коины, рейтинг, Lessons */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={() => setMarketOpen(true)}
-            className="wellness-card p-3 flex flex-col justify-between min-h-[100px] text-left cursor-pointer hover:shadow-md transition"
+            className="wellness-card p-2.5 sm:p-3 flex flex-col justify-between min-h-[88px] sm:min-h-[100px] text-left cursor-pointer hover:shadow-md transition active:scale-[0.98]"
           >
             <span className="isa-section-label">House coins</span>
             <div className="flex items-end gap-1 mt-2">
@@ -1525,7 +1572,7 @@ export default function StudentPortal({
             <span className="mt-2 text-[9px] font-bold text-isa-gold">Open market →</span>
           </button>
 
-          <div className="wellness-card p-3 flex flex-col justify-between min-h-[100px]">
+          <div className="wellness-card p-2.5 sm:p-3 flex flex-col justify-between min-h-[88px] sm:min-h-[100px]">
             <span className="isa-section-label">Merit points</span>
             <div className="flex items-end gap-1 mt-2">
               <span className="text-2xl font-extrabold text-isa-navy">{userRating}</span>
@@ -1540,10 +1587,10 @@ export default function StudentPortal({
               setCurrentTab("lessons");
               setActiveCourse(null);
             }}
-            className="isa-lessons-cta p-3 rounded-2xl flex flex-col justify-between min-h-[100px] text-left cursor-pointer hover:opacity-95 transition shadow-md"
+            className="isa-lessons-cta p-2.5 sm:p-3 rounded-2xl flex flex-col justify-between min-h-[88px] sm:min-h-[100px] text-left cursor-pointer hover:opacity-95 transition shadow-md active:scale-[0.98]"
           >
             <BookOpen className="w-5 h-5 text-isa-gold-light" />
-            <span className="text-sm font-extrabold mt-2">Lessons</span>
+            <span className="text-xs sm:text-sm font-extrabold mt-2">Lessons</span>
             <span className="text-[9px] opacity-90">Curriculum →</span>
           </button>
         </div>
@@ -1703,7 +1750,7 @@ export default function StudentPortal({
                 className="space-y-4"
               >
                 {/* Lecture selection slider indicators */}
-                <div className="flex gap-2.0 overflow-x-auto py-1 select-none">
+                <div className="isa-scroll-x flex gap-2 py-1 select-none -mx-1 px-1">
                   {activeCourse.lessons.map((les, idx) => {
                     const done = studentStats.completedLessons.includes(les.id);
                     const isCurrent = idx === activeLessonIdx;
@@ -1929,6 +1976,65 @@ export default function StudentPortal({
     // LIST CATALOG view if no activeCourse studied
     return (
       <div className="space-y-4 animate-fade-in p-1">
+        <div className="isa-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-isa-gold" />
+            <h3 className="text-sm font-bold text-isa-navy">Создать курс с ИИ</h3>
+          </div>
+          <p className="text-[10px] text-isa-muted">Gemini сгенерирует 3 урока и тест по вашей теме</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={aiCourseTopic}
+              onChange={(e) => setAiCourseTopic(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleGenerateAiCourse()}
+              placeholder="Например: Основы машинного обучения"
+              className="flex-1 text-base sm:text-xs p-3 border border-isa-border rounded-xl bg-white min-w-0"
+            />
+            <button
+              type="button"
+              onClick={handleGenerateAiCourse}
+              disabled={isGeneratingCourse || !aiCourseTopic.trim()}
+              className="isa-btn-primary isa-touch-btn px-4 text-xs w-full sm:w-auto shrink-0 disabled:opacity-40 cursor-pointer"
+            >
+              {isGeneratingCourse ? "…" : "Создать"}
+            </button>
+          </div>
+          {aiCourseError && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">{aiCourseError}</p>
+          )}
+        </div>
+
+        <div className="isa-card p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <Search className="w-4 h-4 text-isa-navy" />
+            <h3 className="text-sm font-bold text-isa-navy">Поиск по курсам</h3>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAiSmartSeek()}
+              placeholder="Тема, категория…"
+              className="flex-1 text-base sm:text-xs p-3 border border-isa-border rounded-xl min-w-0"
+            />
+            <button
+              type="button"
+              onClick={handleAiSmartSeek}
+              disabled={isAiSearching || !searchQuery.trim()}
+              className="isa-touch-btn bg-isa-navy text-isa-gold-light px-4 sm:px-3 py-2.5 sm:py-2 rounded-xl text-xs font-bold disabled:opacity-40 cursor-pointer w-full sm:w-auto"
+            >
+              {isAiSearching ? "…" : "ИИ"}
+            </button>
+          </div>
+          {aiSearchRecommendation && (
+            <p className="text-[11px] text-isa-navy bg-isa-gold-pale border border-isa-gold/30 rounded-xl p-3 whitespace-pre-wrap">
+              {aiSearchRecommendation}
+            </p>
+          )}
+        </div>
+
         <div className="flex justify-between items-center bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
           <h3 className="font-extrabold text-[#202124] text-xs uppercase tracking-wider">Каталог Лекций ({courses.length})</h3>
           <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-650 px-2 py-0.5 rounded-lg font-mono">
@@ -2099,6 +2205,13 @@ export default function StudentPortal({
       }
 
       const currentPart = parts[duolingoStep];
+      if (!currentPart) {
+        return (
+          <div className="text-center py-12 text-sm text-isa-muted">
+            Загрузка шага…
+          </div>
+        );
+      }
       const isPartChecked = duolingoCheckedAnswers.includes(duolingoStep);
       const selectedOption = duolingoSelectedAnswers[duolingoStep];
       const selectedCorrectly = selectedOption === currentPart.correctAnswer;
@@ -2273,7 +2386,7 @@ export default function StudentPortal({
         <div className="space-y-2.5">
           <span className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-wider block font-bold">Выберите тему для быстрого игрового урока:</span>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
             
             {/* Category 1: Chess */}
             <div className="bg-white border border-slate-200. rounded-2xl p-4.5 shadow-xs flex flex-col justify-between space-y-4 relative group hover:border-[#4285F4] transition-all">
@@ -2627,13 +2740,13 @@ export default function StudentPortal({
             <p className="text-[9.5px] text-slate-500">Введите тему (например, "обучение шахматам", "javascript react") и ИИ подберет ролики</p>
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               value={videoSearchQuery}
               onChange={(e) => setVideoSearchQuery(e.target.value)}
               placeholder="Тема лекции или навыка..."
-              className="flex-1 text-xs p-2 bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-[#4285F4] focus:bg-white outline-none rounded-xl font-medium transition"
+              className="flex-1 text-base sm:text-xs p-3 sm:p-2 bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-[#4285F4] focus:bg-white outline-none rounded-xl font-medium transition min-w-0"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleYouTubeSearch();
               }}
@@ -2641,7 +2754,7 @@ export default function StudentPortal({
             <button
               onClick={handleYouTubeSearch}
               disabled={isVideoSearching || !videoSearchQuery.trim()}
-              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-[10px] font-black uppercase tracking-wider px-5 py-2.5 rounded-xl transition cursor-pointer select-none flex items-center gap-1.5 shrink-0"
+              className="isa-touch-btn bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-[10px] font-black uppercase tracking-wider px-5 py-2.5 rounded-xl transition cursor-pointer select-none flex items-center justify-center gap-1.5 shrink-0 w-full sm:w-auto"
             >
               {isVideoSearching ? (
                 <>
@@ -2661,7 +2774,7 @@ export default function StudentPortal({
         <div className="bg-slate-900 rounded-2xl overflow-hidden border border-slate-950 shadow flex flex-col justify-between">
           
           {/* Virtual Retro Monitor Frame Screen / Real YouTube Embed Player */}
-          <div className="bg-slate-950 rounded-t-2xl h-[220px] relative flex flex-col justify-center items-center text-white text-center overflow-hidden">
+          <div className="bg-slate-950 rounded-t-2xl aspect-video max-h-[min(56vw,240px)] sm:max-h-[220px] sm:h-[220px] sm:aspect-auto relative flex flex-col justify-center items-center text-white text-center overflow-hidden">
             {activeVideo && activeVideo.youtubeId ? (
               <iframe
                 src={`https://www.youtube.com/embed/${activeVideo.youtubeId}?autoplay=${videoPlaying ? 1 : 0}&enablejsapi=1&rel=0`}
@@ -3225,36 +3338,26 @@ export default function StudentPortal({
   const navTabs = [
     { id: "home" as const, label: "Home", icon: Home },
     { id: "lessons" as const, label: "Lessons", icon: BookOpen },
-    { id: "center" as const, label: "", icon: Zap, isFab: true },
+    { id: "search" as const, label: "Play", icon: Sparkles },
     { id: "video" as const, label: "Video", icon: Video },
     { id: "profile" as const, label: "Profile", icon: User },
   ];
 
   return (
-    <div className="pb-28 min-h-[520px]">
+    <div className="min-h-[min(520px,100dvh)]">
       {renderCampusProfileHeader()}
       {renderMarketModal()}
       {renderLeaderboardModal()}
       <div className="min-h-[480px]">{tabBodyContent()}</div>
 
-      {/* Bottom nav — wellness app style with center FAB */}
+      {/* Bottom nav — compact on mobile, safe-area aware */}
       <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
-        <div className="max-w-lg mx-auto px-4 pb-4 pointer-events-auto">
-          <div className="bg-white rounded-[28px] border border-isa-border py-2 px-2 flex justify-around items-end isa-shadow">
+        <div className="max-w-lg mx-auto isa-bottom-nav-wrap pointer-events-auto">
+          <nav
+            className="isa-bottom-nav bg-white rounded-[22px] sm:rounded-[28px] border border-isa-border py-1.5 sm:py-2 px-1 sm:px-2 flex justify-between items-stretch isa-shadow"
+            aria-label="Main navigation"
+          >
             {navTabs.map((tab) => {
-              if (tab.isFab) {
-                return (
-                  <button
-                    key="center"
-                    type="button"
-                    onClick={() => setChatOpen(true)}
-                    className="isa-nav-fab cursor-pointer"
-                    title="Kapusta AI tutor"
-                  >
-                    <Zap className="w-5 h-5 fill-isa-navy" />
-                  </button>
-                );
-              }
               const active = currentTab === tab.id;
               return (
                 <button
@@ -3264,18 +3367,22 @@ export default function StudentPortal({
                     setCurrentTab(tab.id);
                     if (tab.id !== "lessons") setActiveCourse(null);
                   }}
-                  className={`flex flex-col items-center py-2 px-3 rounded-2xl transition cursor-pointer min-w-[56px] ${
+                  className={`isa-bottom-nav__btn flex flex-col items-center justify-center gap-0.5 rounded-xl sm:rounded-2xl transition cursor-pointer ${
                     active ? "isa-nav-item--active text-isa-navy font-bold" : "text-isa-muted"
                   }`}
                 >
-                  <tab.icon className={`w-5 h-5 ${active ? "stroke-[2.5px]" : ""}`} />
-                  <span className={`text-[10px] font-semibold mt-0.5 ${active ? "font-bold" : ""}`}>
+                  <tab.icon className={`w-5 h-5 shrink-0 ${active ? "stroke-[2.5px]" : ""}`} />
+                  <span
+                    className={`text-[9px] sm:text-[10px] font-semibold leading-none truncate max-w-full px-0.5 ${
+                      active ? "font-bold" : ""
+                    }`}
+                  >
                     {tab.label}
                   </span>
                 </button>
               );
             })}
-          </div>
+          </nav>
         </div>
       </div>
 
@@ -3378,13 +3485,13 @@ export default function StudentPortal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[120] flex items-center justify-center p-4 select-none"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4 select-none"
           >
             <motion.div
               initial={{ scale: 0.92, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.92, y: 20 }}
-              className="isa-card max-w-sm w-full p-6 text-center space-y-4"
+              className="isa-card max-w-sm w-full p-5 sm:p-6 text-center space-y-4 rounded-t-3xl sm:rounded-2xl max-h-[92dvh] overflow-y-auto"
             >
               <div className="flex flex-col items-center gap-1">
                 <div className="w-12 h-12 bg-isa-gold-pale rounded-full flex items-center justify-center border border-isa-gold/40">
@@ -3501,15 +3608,21 @@ export default function StudentPortal({
         )}
       </AnimatePresence>
 
-      {/* FLOATING COLLAPSED / EXPANDED AI TUTOR COMPANION PANEL (KAPUSTA AI) */}
-      <div className="fixed bottom-5 right-5 z-40">
+      {/* AI tutor — full screen on phone, sheet on desktop */}
+      <div
+        className={`fixed z-[55] pointer-events-none ${
+          chatOpen
+            ? "inset-0 sm:inset-auto sm:bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:right-3 sm:left-auto"
+            : "bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-3 left-auto"
+        }`}
+      >
         <AnimatePresence>
           {chatOpen ? (
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 30 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 30 }}
-              className="w-[310px] md:w-[360px] h-[450px] bg-white rounded-2xl border border-slate-250 shadow-2xl overflow-hidden flex flex-col justify-between"
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 24 }}
+              className="isa-chat-sheet isa-chat-sheet--open pointer-events-auto bg-white sm:rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col h-full sm:h-[min(72dvh,28rem)] sm:w-[min(100vw-1.5rem,22.5rem)] md:w-[360px]"
             >
               {/* Chat Panel Header - Google Accent with green dots */}
               <div className="bg-isa-navy p-3 text-isa-gold-light flex justify-between items-center">
@@ -3593,7 +3706,7 @@ export default function StudentPortal({
               </div>
 
               {/* Chat inputs submission widget */}
-              <div className="p-2.5 bg-white border-t border-slate-200 flex items-center gap-2">
+              <div className="p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:pb-2.5 bg-white border-t border-slate-200 flex items-center gap-2">
                 <input
                   type="text"
                   value={chatInput}
@@ -3601,16 +3714,17 @@ export default function StudentPortal({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleSendChatMessage();
                   }}
-                  placeholder="Вопрос по лекциям к Kapusta AI..."
-                  className="flex-grow text-xs px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl focus:border-[#4285F4] focus:outline-none"
+                  placeholder="Вопрос к Kapusta AI..."
+                  className="flex-grow text-base sm:text-xs px-3 py-2.5 sm:py-2 border border-slate-200 bg-slate-50 rounded-xl focus:border-[#4285F4] focus:outline-none min-w-0"
                 />
                 
                 <button
                   onClick={handleSendChatMessage}
                   disabled={!chatInput.trim() || isTyping}
-                  className="p-2 bg-[#4285F4] hover:bg-blue-600 text-white rounded-xl shadow cursor-pointer disabled:bg-slate-300 transition shrink-0"
+                  className="isa-touch-btn p-2.5 sm:p-2 bg-[#4285F4] hover:bg-blue-600 text-white rounded-xl shadow cursor-pointer disabled:bg-slate-300 transition shrink-0"
+                  aria-label="Send"
                 >
-                  <Send className="w-3.5 h-3.5" />
+                  <Send className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                 </button>
               </div>
             </motion.div>
@@ -3632,10 +3746,11 @@ export default function StudentPortal({
                   ]);
                 }
               }}
-              className="bg-isa-navy hover:bg-isa-navy-mid text-isa-gold-light p-3.5 rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer border-2 border-isa-gold/50 font-sans select-none relative"
+              className="pointer-events-auto bg-isa-navy hover:bg-isa-navy-mid text-isa-gold-light p-3 sm:p-3.5 rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer border-2 border-isa-gold/50 font-sans select-none relative active:scale-95"
+              aria-label="Open Kapusta AI chat"
             >
               <span className="text-xl">🌿</span>
-              <span className="text-[11px] font-bold">Капуста AI</span>
+              <span className="sr-only sm:not-sr-only sm:text-[11px] sm:font-bold">Капуста AI</span>
             </motion.button>
           )}
         </AnimatePresence>

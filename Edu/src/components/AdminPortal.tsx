@@ -30,7 +30,7 @@ export default function AdminPortal({
   }, [initialTab, onInitialTabConsumed]);
 
   return (
-    <div className="space-y-6 animate-fade-in p-1 text-isa-navy">
+    <div className="space-y-4 sm:space-y-6 animate-fade-in p-0 sm:p-1 text-isa-navy">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-isa-border pb-5">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight font-[family-name:var(--font-display)]">
